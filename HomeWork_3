@@ -1,0 +1,82 @@
+"""
+1) Развернуть у себя на компьютере/виртуальной машине/хостинге MongoDB и реализовать функцию,
+    записывающую собранные вакансии в созданную БД
+2) Написать функцию, которая производит поиск и выводит на экран вакансии с заработной платой больше введенной суммы
+3*)Написать функцию, которая будет добавлять в вашу базу данных только новые вакансии с сайта
+P.S. - база данных MongoDB
+"""
+
+import HomeWork_2 as hw2  # предыдущей работы
+from pymongo import MongoClient
+
+
+client = MongoClient('mongodb://localhost:27017/')  # URI формат
+
+db = client['users_db']  # выбираем базу данных
+vakancy = db.vakancy  # выбираем коллекцию
+
+
+
+def update_1():
+
+    hw2.connect_hh()  # делаем запрос к сайту
+    matched = modified = upserted = 0
+
+    for i in hw2._sort_vak:
+        respons = vakancy.update_one(i,
+                                     {'$set': i},
+                                     upsert=True)
+        if respons.matched_count:
+            matched = matched + 1
+        if respons.modified_count:
+            modified = modified + 1
+        if respons.upserted_id:
+            upserted = upserted + 1
+
+    print(matched, modified, upserted)
+
+
+def update_top():  # аналог предыдущей функции
+    hw2.connect_hh()
+    ins = 0
+    upd = 0
+    for x in hw2._sort_vak:
+        new_elem = [True, 'x']
+        if x.get('ссылка', False):
+            for i in vakancy.find({'ссылка': x.get('ссылка')}, {'ссылка': 1, '_id': 1}):
+                id_1 = i.get('_id', [0])
+                link = i.get('ссылка', [0])
+                vakancy.update_one({'ссылка': link, '_id': id_1}, {'$set': x})
+                upd += 1
+                new_elem = [False, x]
+            if new_elem[0]:
+                vakancy.insert_one(x)
+                new_elem = [True, 'x']
+                ins += 1
+        else:
+            print('что то не так)))')
+    print(f'Вставок новых документов{ins} \n '
+          f'Обновлений документов{upd}')
+
+
+def sorted():
+  # Функция выводит названия вакансий зарплата в которых выше указанной
+    try:
+        min = int(input('Введите минимальное значение зарплаты:'))
+    except ValueError:
+        min = 1
+
+    for i in vakancy.find():
+        if i.get('зарплата') is not None:
+            z = i.get('зарплата')
+            if z[0] is not None:
+                if int(z[0]) >= min:
+                    print(i.get('название'))
+            else:
+                pass
+
+
+if __name__ == "__main__":
+    sorted()  # сортировка
+    #update_top()  # добавление данных в БД
+    update_1()  # добавление данных в БД
