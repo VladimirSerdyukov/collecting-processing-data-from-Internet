@@ -1,0 +1,123 @@
+"""
+От себя добавил условие только экономические новости.
+Спарсить сайты: yandex.ru/news
+                news.mail.ru
+                lenta.ru
+С помощью Xpath.
+
+Структура выходных данных:
+источник
+название
+ссылка на новость
+
+Все разместить в базе данных...
+"""
+from lxml import html
+from pprint import pprint
+from pymongo import MongoClient
+import requests
+import datetime as d
+
+
+now = d.datetime.now()  # текущее время
+# заголовок
+header = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.45 Safari/537.36'}
+# ссылки на инфо ресурсы
+links = {}
+links['yandex'] = 'https://yandex.ru/news/rubric/business'  # добавляем элемент в словарь
+links.update({'mail': 'https://news.mail.ru/economics/', 'lenta': 'https://lenta.ru/rubrics/economics/'})
+# добавляем элементы в словарь
+
+# пути Xpath к данным
+# вернет значение атрибута если /@name  где name атрибут.
+#
+path_yandex = "//div[@class='mg-grid__col mg-grid__col_xs_4'] | //div[@class='mg-grid__col mg-grid__col_xs_8'] | " \
+              " //div[@class='mg-grid__col mg-grid__col_xs_6']"  #
+path_yandex_1 = ".//a[@class='mg-card__link']/@href"  # ссылка
+path_yandex_2 = ".//h2[@class='mg-card__title']/text()"  # название статьи
+path_yandex_3 = ".//span[@class='mg-card-source__time']/text()"  # время
+path_news_mail = "//div[@class='newsitem newsitem_height_fixed js-ago-wrapper js-pgng_item']"  # базаовый блок
+path_news_mail_1 = ".//a[@class='newsitem__title link-holder']/@href"  # ссылка на новость
+path_news_mail_2 = ".//span[@class='newsitem__title-inner']/text()"  # название новости
+path_news_mail_3 = ".//span[@class='newsitem__param js-ago']/@datetime"  # time
+path_lenta = "//div[@class='item news b-tabloid__topic_news']"
+path_lenta_1 = ".//a[@class='titles']/@href"  # ссылка на новость
+path_lenta_2 = ".//h3[@class='card-title']/text()"  # название новости
+path_lenta_3 = ".//span[@class='time']/text()"  # time
+
+
+def connect_mongo(news):
+    matched = modified = upserted = 0
+    client = MongoClient('mongodb://localhost:27017/')  # URI формат
+    db = client['users_db']  # выбираем базу данных
+    book_news = db.news  # выбираем коллекцию
+    for i in news:
+        respons = book_news.update_one(i,
+                                     {'$set': i},
+                                     upsert=True
+                                     )
+        if respons.matched_count:
+            matched = matched + 1
+        if respons.modified_count:
+            modified = modified + 1
+        if respons.upserted_id:
+            upserted = upserted + 1
+
+    print(matched, modified, upserted)
+
+def connect(link):
+    respons = requests.get(link, headers=header)
+
+    if respons.status_code == 200:
+        dom = html.fromstring(respons.text)
+    else:
+        print("запрос не выполнен")
+    return dom
+
+
+def news_mail():
+    news = []
+    dom = connect(links.get('mail'))
+    bloks = dom.xpath(path_news_mail)
+    for blok in bloks:
+        link = blok.xpath(path_news_mail_1)
+        name = blok.xpath(path_news_mail_2)
+        news_date = blok.xpath(path_news_mail_3)
+        news.append({'news_source': 'mail', 'name': name, 'link': link, 'data_time': news_date})
+    connect_mongo(news)
+
+
+def news_lenta():
+    news = []
+    dom = connect(links.get('lenta'))
+    bloks = dom.xpath(path_lenta)
+    for blok in bloks:
+        link = blok.xpath(path_lenta_1)
+        name = blok.xpath(path_lenta_2)
+        news_date = blok.xpath(path_lenta_3)
+        dt = d.datetime.today().strftime('%Y-%m-%d')
+        news_dat = dt + 'T' + str(news_date[0]) + '+03:00'
+        news.append({'news_source': 'lenta', 'name': name, 'link': link, 'data_time': news_dat})
+    connect_mongo(news)
+
+
+def news_yandex():
+    news = []
+    dom = connect(links.get('yandex'))
+    bloks = dom.xpath(path_lenta)
+    for now in bloks:
+        link = now.xpath(path_yandex_1)
+        name = now.xpath(path_yandex_2)
+        news_date = now.xpath(path_yandex_3)
+        dt = d.datetime.today().strftime('%Y-%m-%d')
+        news_dat = dt + 'T' + str(news_date[0]) + '+03:00'
+        news.append({'news_source': 'yandex', 'name': name, 'link': link, 'data_time': news_dat})
+    connect_mongo(news)
+
+
+if __name__ == "__main__":
+    news_yandex()
+    news_mail()
+    news_lenta()
+now_1 = d.datetime.now()  # текущее время
+print(now_1 - now)  # время выполнения скрипта
