@@ -1,0 +1,11 @@
+import requests
+from pprint import pprint
+
+host = 'https://api.github.com/'
+path = 'users/valdei777/repos'
+
+headers = {'Accept': 'application/vnd.github.nebula-preview+jason'}
+
+respons = requests.get(host + path, headers=headers)
+data = respons.json()
+pprint(data)
