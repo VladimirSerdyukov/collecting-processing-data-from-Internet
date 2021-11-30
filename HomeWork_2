@@ -1,0 +1,127 @@
+"""
+    1)  Необходимо собрать информацию о вакансиях на должность Data science
+        с сайта hh.ru.
+        Приложение должно анализировать несколько страниц сайта.
+        Получившийся список должен содержать в себе минимум:
+        *Наименование вакансии
+        *Предлагаемую зарплату (отдельно мин. и отдельно макс.)
+        *Ссылку на саму вакансию
+По своему желанию можно добавить еще работодателя и расположение.
+ Данная структура должна быть одинаковая для вакансий с обоих сайтов.
+  Общий результат можно вывести с помощью dataFrame через pandas.
+ """
+
+# hh.ru
+import re
+import requests
+import numpy
+from bs4 import BeautifulSoup as bs
+
+_sort_vak = []  # глобальный список вакансий.
+
+
+# проверяем наличие следующей страницы
+def sep_links(soup):
+    try:
+        href = soup.find('a', {'data-qa': 'pager-next'})['href']
+        return True
+    except Exception:
+        print('Закрываем страницу из поиска')
+        return False
+
+
+#  поиск целевой информации
+def sep_v(soup):
+    v_lists = soup.findAll('div', {'class': 'vacancy-serp-item'})  # находим все ссылки на вакансии на странице
+    for v_list in v_lists:
+        span = v_list.find('span', {'data-qa': 'vacancy-serp__vacancy-compensation'})
+        if span is not None:  # обрабатываем значение зарплаты если оно указано.
+            zp = span.get_text(strip=True)  # вытаскиваем значение тега
+            x = zp.split('\u202f')  # убираем неразрывный пробел
+            y = ''
+            for s in x:
+                y = y + str(s)  # склеиваем обратно в строку
+            p = re.split(r"(\s+)", y)  # разрезаем по пробелам
+            y = []
+            currency = ''
+            if len(p) > 1:  # проверяем по количеству список р если больше одного то:
+                for s in p:
+                    if s != ' ' and s != '–':  # убираем пробелы и дефис
+                        if s[-1] != '0':
+                            for i in s:
+                                if i not in '0 1 2 3 4 5 6 7 8 9':  # фильтруем значания в поиске валюты
+                                    currency = currency + i
+                            y.append(s[:-len(currency)])
+                        else:
+                            y.append(s)
+                        zp = y  # записываем значение зп в случае указания диапазона
+            else:
+                #  можно сделать отсечение букв
+                char = p[0]
+                f = ''
+                d = ''
+                for i in char:
+                    if i in '0 1 2 3 4 5 6 7 8 9':
+                        f = f + i
+                zpf = f
+                for i in char:
+                    if i not in '0 1 2 3 4 5 6 7 8 9':
+                        d = d + i
+                if d[:2] == 'до':
+                    y.append(None)
+                    y.append(zpf)
+                    zp = y
+                elif d[:2] == 'от':
+                    y.append(zpf)
+                    y.append(None)
+                    zp = y
+                else:
+                    print("Неведома ошибка)))")
+                if d[-1] == '.':
+                    currency = d[-4:]
+                elif d[-1] == 'D':
+                    currency = d[-3:]
+                else:
+                    print('Вводные данные изменились)))')
+        else:
+            zp = span
+            currency = None
+
+        link = v_list.find('a', {'data-qa': 'vacancy-serp__vacancy-title'})['href'].split('?')[0]
+        name = soup.find('a', {'data-qa': 'vacancy-serp__vacancy-title'})
+        name = name.get_text(strip=True)
+        _sort_vak.append({'название': name, 'ссылка': link, 'зарплата': zp, 'валюта': currency})
+
+
+#  функция подключения к сайту и загрузки ответа
+def connect_hh(liter=1):
+    link = 'https://hh.ru'
+    path = '/search/vacancy'
+    params = {'L_save_area': 'true', 'clusters': 'true', 'enable_snippets': 'true', 'text': 'Data science',
+              'showClusters': 'false', 'page': liter}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                      'Chrome/83.0.4103.61 Safari/537.36', 'Accept': '*/*'}
+    response = requests.get(link + path, params=params, headers=headers)
+    if 199 < response.status_code < 299:  # проверка правильности выполнения загрузки страницы
+        soup = bs(response.text, 'lxml')
+        while sep_links(soup):
+            print(f"загрузка страницы поиска № {liter}")
+            liter += 1
+            connect_hh(liter)
+            sep_v(soup)
+            soup = False
+            print(f"Завершена обработка страницы поиска № {liter}")
+    else:
+        print(response.status_code)
+
+
+def save_f():
+    numpy.savetxt('hh.csv', [i for i in _sort_vak], delimiter=',', fmt='%s')
+    print("Формирование файла завершено")
+    # работает но не идеально нужно дотачить
+
+
+if __name__ == "__main__":
+    connect_hh(35)
+    save_f()
